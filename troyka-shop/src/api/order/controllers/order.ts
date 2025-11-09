@@ -23,7 +23,8 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
 			user,
 			totalPrice,
 		} = ctx.request.body
-		const { host } = ctx.request
+
+		const origin = ctx.get('origin') || ctx.request.header.origin
 
 		try {
 			if (paymentMethod === 'card') {
@@ -49,44 +50,48 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
 					})
 				)
 
+console.log('Origin:', origin)
+console.log('Success URL:', `${origin}/success`)
 
 				const session = await stripe.checkout.sessions.create({
-					payment_method_types: ['card'],
-					mode: 'payment',
-					success_url: host.includes('localhost')
-						? 'http://localhost:3000/success'
-						: `https://${host}/success`,
-					cancel_url: host.includes('localhost')
-						? 'http://localhost:3000/failed'
-						: `https://${host}/failed`,
-					line_items: lineItems,
-					shipping_options:  totalPrice < 50 ? [
-						{
-							shipping_rate_data: {
-								type: 'fixed_amount',
-								fixed_amount: {
-									amount: 750,
-									currency: 'bgn',
-								},
-								display_name: 'Speedy',
-								delivery_estimate: {
-									minimum: {
-										unit: 'business_day',
-										value: 1,
-									},
-									maximum: {
-										unit: 'business_day',
-										value: 3,
-									},
-								},
-							},
-						},
-					] : [],
+    payment_method_types: ['card'],
+    mode: 'payment',
+    success_url: `${origin}/success`,
+    cancel_url: `${origin}/failed`,
+    line_items: lineItems,
+    shipping_options: totalPrice < 50 ? [
+        {
+            shipping_rate_data: {
+                type: 'fixed_amount',
+                fixed_amount: {
+                    amount: 750,
+                    currency: 'bgn',
+                },
+                display_name: 'Speedy',
+                delivery_estimate: {
+                    minimum: {
+                        unit: 'business_day',
+                        value: 1,
+                    },
+                    maximum: {
+                        unit: 'business_day',
+                        value: 3,
+                    },
+                },
+            },
+        },
+    ] : [],
 				})
+
+				// Retrieve the payment intent ID from the session
+				const sessionWithPaymentIntent = await stripe.checkout.sessions.retrieve(session.id, {
+					expand: ['payment_intent']
+				})
+				const paymentIntentId = sessionWithPaymentIntent.payment_intent?.id || session.payment_intent
 
 				const data = {
 					products,
-					stripeId: session.id,
+					stripeId: paymentIntentId,
 					paymentMethod,
 					orderId,
 					status,

@@ -38,20 +38,27 @@ export default {
 		switch (event.type) {
 		case 'payment_intent.succeeded':
 			if (event.data.object) {
-				let orders
+				const paymentIntent = event.data.object
+				const stripePaymentIntentId = paymentIntent.id
+
+				console.log(`Payment succeeded for intent: ${stripePaymentIntentId}`)
+
+				let itemToUpdate
 
 				try {
-					//Find the latest order
-					const res = await strapi.entityService.findMany('api::order.order', {
-						sort: { id: 'desc' },
+					// Find the order by stripeId (payment intent ID)
+					itemToUpdate = await strapi.db.query('api::order.order').findOne({
+						where: { stripeId: stripePaymentIntentId },
 					})
 
-					orders.push(res)
+					if (!itemToUpdate) {
+						console.log(`No order found with stripeId: ${stripePaymentIntentId}`)
+						return
+					}
 				} catch (error) {
-					console.log(error, 'Error fetching orders')
+					console.log(error, 'Error fetching order')
+					return
 				}
-
-				const itemToUpdate = orders.find((item) => item)
 
 				const locale = itemToUpdate.products.find(
 					(item) => item.attributes.locale
@@ -60,16 +67,12 @@ export default {
 				if (itemToUpdate) {
 					try {
 						//Update latest order
-						const entry = await strapi.entityService.update(
-							'api::order.order',
-							itemToUpdate?.id,
-							{
-								fields: ['orderId', 'paymentMethod', 'totalPrice'],
-								data: {
-									isPaid: true,
-								},
+						const entry = await strapi.db.query('api::order.order').update({
+							where: { id: itemToUpdate.id },
+							data: {
+								isPaid: true,
 							}
-						)
+						})
 
 						const calculateDelivery = () => {
 							if (itemToUpdate.totalPrice >= 50) {
