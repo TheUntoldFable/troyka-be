@@ -24,7 +24,34 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
 			totalPrice,
 		} = ctx.request.body
 
+
 		const origin = ctx.get('origin') || ctx.request.header.origin
+
+
+		const resolveProductLocale = (product) =>
+  product?.locale ?? product?.attributes?.locale;
+
+		const fetchProduct = async (product) => {
+  if (!product?.id) throw new Error('Missing product id in order payload');
+
+  const locale = resolveProductLocale(product);
+  const queryOptions: any = { fields: ['name', 'price'] };
+  if (locale) queryOptions.locale = locale;
+
+  const item = await strapi.entityService.findOne(
+    'api::product.product',
+    product.id,
+    queryOptions,
+  );
+
+  if (!item) {
+    throw new Error(
+      `Product ${product.id} not found${locale ? ` for locale ${locale}` : ''}`,
+    );
+  }
+
+  return item;
+};
 
 		try {
 			if (paymentMethod === 'card') {
@@ -33,9 +60,7 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
 
 				const lineItems = await Promise.all(
 					products.map(async (product) => {
-						const item = await strapi
-							.service('api::product.product')
-							.findOne(product.id)
+						const item = await fetchProduct(product)
 
 						return {
 							price_data: {
@@ -115,9 +140,7 @@ console.log('Success URL:', `${origin}/success`)
 
 				await Promise.all(
 					products.map(async (product) => {
-						const item = await strapi
-							.service('api::product.product')
-							.findOne(product.id)
+						const item = await fetchProduct(product)
 
 						return {
 							price_data: {
