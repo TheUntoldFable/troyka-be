@@ -1,6 +1,4 @@
 import Stripe from 'stripe'
-import { Order } from '../../../models/order'
-import { homeType, officeType, paymentArrive, paymentCard, selectSubject, selectTemplateId } from '../../../utils/mailLocales'
 
 const stripeConfig: Stripe.StripeConfig = {
 	apiVersion: '2022-11-15',
@@ -15,129 +13,77 @@ const stripe = new Stripe(
 const endpointSecret = process.env.WEBHOOK_SECRET
 
 export default {
-	async handler(ctx, _next) {
-		// This is your Stripe CLI webhook secret for testing your endpoint locally.
+	async handler(ctx) {
 		let event
 
 		const raw = ctx.request.body[Symbol.for('unparsedBody')]
 
 		try {
-			const sig = ctx.request.header['stripe-signature']
+			const sig = ctx.request.headers['stripe-signature']
 			if (sig) {
 				event = stripe.webhooks.constructEvent(raw, sig, endpointSecret)
-				ctx.response.status = 200
+			} else {
+				ctx.response.status = 400
+				ctx.body = { error: 'Missing stripe-signature header' }
+				return
 			}
 		} catch (err) {
-			console.log(err, 'err')
+			console.log(err, 'Webhook signature verification failed')
 			ctx.response.status = 400
+			ctx.body = { error: `Webhook Error: ${err.message}` }
 			return
 		}
 
-		// Handle the event
+		console.log('✅ Webhook received:', event.type)
 
-		switch (event.type) {
-		case 'payment_intent.succeeded':
-			if (event.data.object) {
-				const paymentIntent = event.data.object
-				const stripePaymentIntentId = paymentIntent.id
+switch (event.type) {
+    case 'checkout.session.completed': {
+        const session = event.data.object
+        const sessionId = session.id
 
-				console.log(`Payment succeeded for intent: ${stripePaymentIntentId}`)
+        console.log(`💳 Checkout completed for session: ${sessionId}`)
 
-				let itemToUpdate
+        try {
+            // Find the order by session ID (stripeId)
+            const itemToUpdate = await strapi.db.query('api::order.order').findOne({
+                where: { stripeId: sessionId },
+            })
 
-				try {
-					// Find the order by stripeId (payment intent ID)
-					itemToUpdate = await strapi.db.query('api::order.order').findOne({
-						where: { stripeId: stripePaymentIntentId },
-					})
+            if (!itemToUpdate) {
+                console.log(`⚠️  No order found with stripeId: ${sessionId}`)
+                ctx.response.status = 200
+                ctx.body = { received: true }
+                return
+            }
 
-					if (!itemToUpdate) {
-						console.log(`No order found with stripeId: ${stripePaymentIntentId}`)
-						return
-					}
-				} catch (error) {
-					console.log(error, 'Error fetching order')
-					return
-				}
+            console.log('📦 Updating order:', itemToUpdate.id)
 
-				const locale = itemToUpdate.products.find(
-					(item) => item.attributes.locale
-				).attributes.locale
+            // Update order with payment intent and mark as paid
+            const entry = await strapi.db.query('api::order.order').update({
+                where: { id: itemToUpdate.id },
+                data: {
+                    isPaid: true,
+                    paymentIntentId: session.payment_intent, // Optionally store payment intent too
+                },
+            })
 
-				if (itemToUpdate) {
-					try {
-						//Update latest order
-						const entry = await strapi.db.query('api::order.order').update({
-							where: { id: itemToUpdate.id },
-							data: {
-								isPaid: true,
-							}
-						})
+            console.log('✅ Order updated successfully:', entry.id)
 
-						const calculateDelivery = () => {
-							if (itemToUpdate.totalPrice >= 50) {
-								return 0
-							}
-							if (itemToUpdate.totalPrice < 50) {
-								return itemToUpdate.addressInfo?.officeAddress ? 5 : 7.5
-							}
-						}
+        } catch (error) {
+            console.error('❌ Error processing webhook:', error)
+            ctx.response.status = 200
+            ctx.body = { received: true, error: 'Processing failed' }
+            return
+        }
+        break
+    }
 
-						try {
-							await strapi.plugins['email'].services.email.send({
-								to: itemToUpdate?.credentialsInfo?.email,
-								from: 'info.troyka@gmail.com',
-								subject: selectSubject[locale],
-								template_id: selectTemplateId[locale],
-								dynamic_template_data: {
-									order_id: itemToUpdate.orderId.toUpperCase(),
-									address: itemToUpdate.addressInfo,
-									office_address: itemToUpdate.addressInfo?.officeAddress,
-									payment_option: itemToUpdate.paymentMethod,
-									payment_method: itemToUpdate.paymentMethod === 'arrive'? paymentArrive[locale]: paymentCard[locale],
-									delivery_option: itemToUpdate.addressInfo?.officeAddress
-										? officeType[locale]
-										: homeType[locale],
-									subtotal: itemToUpdate.totalPrice - calculateDelivery(),
-									total: itemToUpdate.totalPrice - calculateDelivery(),
-									delivery_price: calculateDelivery(),
-									billing_address: itemToUpdate?.billingAddressInfo,
-									products: itemToUpdate.products
-								}
-							})
-						}catch (error) {
-							console.log(error,' error')
-						}
+    // You can remove the payment_intent.succeeded case if you don't need it
+    default:
+        console.log(`ℹ️  Unhandled event type: ${event.type}`)
+}
 
-						console.log(entry, '- Order')
-					} catch (error) {
-						console.log(error, 'Error updating item.')
-					}
-				}
-			}
-			break
-
-			// case "charge.succeeded":
-			//   const chargeSucceeded = event.data.object;
-			//   const { phone, email, billing_details, name} = chargeSucceeded;
-
-			//   const customer = await stripe.customers.create(
-			//     {
-			//       name,
-			//       address: billing_details.address,
-			//       email,
-			//       phone,
-			//     },
-			//     { apiKey: process.env.STRIPE_KEY_TEST }
-			//   );
-
-			//   console.log(customer, "[Created] - Customer in Stripe");
-			//   break;
-
-			// Then define and call a function to handle the event payment_intent.succeeded
-			// ... handle other event types
-		default:
-			console.log(`Unhandled event type ${event.type}`)
-		}
+		ctx.response.status = 200
+		ctx.body = { received: true }
 	},
 }

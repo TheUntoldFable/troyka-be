@@ -78,7 +78,7 @@ module.exports = createCoreController('api::order.order', ({ strapi }) => ({
 console.log('Origin:', origin)
 console.log('Success URL:', `${origin}/success`)
 
-				const session = await stripe.checkout.sessions.create({
+const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
     mode: 'payment',
     success_url: `${origin}/success`,
@@ -106,30 +106,30 @@ console.log('Success URL:', `${origin}/success`)
             },
         },
     ] : [],
-				})
+})
+
+
 
 				// Retrieve the payment intent ID from the session
 				const sessionWithPaymentIntent = await stripe.checkout.sessions.retrieve(session.id, {
 					expand: ['payment_intent']
 				})
 				const paymentIntentId = sessionWithPaymentIntent.payment_intent?.id || session.payment_intent
-
-				const data = {
-					products,
-					stripeId: paymentIntentId,
-					paymentMethod,
-					orderId,
-					status,
-					addressInfo,
-					billingAddressInfo,
-					credentialsInfo,
-					user,
-					totalPrice,
-				}
-
+				
+	const data = {
+    products,
+    stripeId: session.id, 
+    paymentMethod,
+    orderId,
+    status,
+    addressInfo,
+    billingAddressInfo,
+    credentialsInfo,
+    user,
+    totalPrice,
+}
 
 				if (session) {
-
 					await strapi.service('api::order.order').create({data})
 				}
 

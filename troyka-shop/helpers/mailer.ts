@@ -1,7 +1,9 @@
+import sgMail from '@sendgrid/mail'
 import { Order } from '../src/models/order'
+sgMail.setApiKey(process.env.SENDGRID_API_KEY)
 
-export const sendMailTo = async (recipient, order: Order) => {
-	await strapi.plugins['email'].services.email.send({
+export const sendMailTo = async (recipient: string, order: Order) => {
+	await sgMail.send({
 		to: recipient,
 		from: 'info.troyka@gmail.com',
 		subject: 'Нова поръчка',
