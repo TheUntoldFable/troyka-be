@@ -43,7 +43,6 @@ exports.default = {
                     const from = process.env.RESEND_FROM || 'info.troyka@gmail.com';
                     const deliveryPrice = calculateDelivery();
                     const subject = mailLocales_1.selectSubject[locale] ?? 'Нова поръчка';
-                    console.log(order, 'order');
                     const { error } = await resend.emails.send({
                         from,
                         to: order?.credentialsInfo?.email,

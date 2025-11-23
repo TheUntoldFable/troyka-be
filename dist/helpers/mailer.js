@@ -4,8 +4,8 @@ exports.sendAdminMail = void 0;
 const resend_1 = require("resend");
 const resend = new resend_1.Resend(process.env.RESEND_API_KEY ?? '');
 const adminRecipients = [
-    // 'pilyovmartin20@gmail.com',
-    // 'georgi.yankov.24@gmail.com',
+    'pilyovmartin20@gmail.com',
+    'georgi.yankov.24@gmail.com',
     'tsvetomir.uzunoff@gmail.com',
 ];
 const sendAdminMail = async (order) => {

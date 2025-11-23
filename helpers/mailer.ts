@@ -4,8 +4,8 @@ import { Order } from '../src/models/order';
 const resend = new Resend(process.env.RESEND_API_KEY ?? '');
 
 const adminRecipients = [
-  // 'pilyovmartin20@gmail.com',
-  // 'georgi.yankov.24@gmail.com',
+  'pilyovmartin20@gmail.com',
+  'georgi.yankov.24@gmail.com',
   'tsvetomir.uzunoff@gmail.com',
 ];
 
